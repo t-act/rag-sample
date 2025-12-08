@@ -1,0 +1,7 @@
+fastapi==0.110.0
+uvicorn[standard]==0.29.0
+chromadb==0.4.22
+sentence-transformers==2.2.2
+pydantic==1.10.13
+numpy<2
+huggingface_hub==0.14.1
