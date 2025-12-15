@@ -1,15 +1,24 @@
+import os
 from fastapi import FastAPI
 import chromadb
 from sentence_transformers import SentenceTransformer
+from openai import OpenAI
+from dotenv import load_dotenv
 
 app = FastAPI()
 
-# ChromaDB クライアント
+# setup ChromaDB
 client = chromadb.Client()
 collection = client.get_or_create_collection("docs")
 
-# SentenceTransformer モデル
+# setup SentenceTransformer
 model = SentenceTransformer("all-MiniLM-L6-v2")
+load_dotenv()
+
+# setup LLM
+LLM_MODEL = "gpt-4.1-nano"
+api_key = os.getenv("OPENAI_API_KEY")
+client_llm = OpenAI(api_key=api_key)
 
 @app.api_route("/ingest", methods=["GET", "POST"])
 def ingest():
@@ -50,3 +59,45 @@ def search(query: str, top_k: int = 1):
     ]
 
     return {"query": query, "hits": hits}
+
+def generate_answer(query: str, contexts: list[str]):
+    context_text = "\n".join(contexts)
+
+    prompt = f"""
+    以下は参考情報です。
+    ---
+    {context_text}
+    ---
+
+    この情報をもとに、次の質問に日本語で答えてください。
+
+    質問: {query}
+    """
+    try: 
+        response = client_llm.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+    except Exception as e:
+        return f"LLM呼び出しに失敗しました: {e}"
+    
+    return response.choices[0].message.content
+
+@app.post("/ask")
+def ask(query: str):
+    q_emb = model.encode([query]).tolist()
+    results = collection.query(
+        query_embeddings=q_emb,
+        n_results=3
+    )
+
+    docs = results["documents"][0]
+    answer = generate_answer(query, docs)
+
+    return {
+        "query": query,
+        "answer": answer,
+        "sources": docs
+    }
