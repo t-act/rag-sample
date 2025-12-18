@@ -4,8 +4,12 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from dotenv import load_dotenv
+from fastapi.templating import Jinja2Templates
+from fastapi import Request
+from fastapi.responses import HTMLResponse
 
 app = FastAPI()
+templates = Jinja2Templates(directory="templates")
 
 # setup ChromaDB
 client = chromadb.Client()
@@ -19,6 +23,13 @@ load_dotenv()
 LLM_MODEL = "gpt-4.1-nano"
 api_key = os.getenv("OPENAI_API_KEY")
 client_llm = OpenAI(api_key=api_key)
+
+@app.get("/")
+def index(request: Request):
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request}
+    )
 
 @app.api_route("/ingest", methods=["GET", "POST"])
 def ingest():
@@ -85,8 +96,8 @@ def generate_answer(query: str, contexts: list[str]):
     
     return response.choices[0].message.content
 
-@app.post("/ask")
-def ask(query: str):
+@app.post("/ask", response_class=HTMLResponse)
+def ask_html(query: str):
     q_emb = model.encode([query]).tolist()
     results = collection.query(
         query_embeddings=q_emb,
@@ -96,8 +107,7 @@ def ask(query: str):
     docs = results["documents"][0]
     answer = generate_answer(query, docs)
 
-    return {
-        "query": query,
-        "answer": answer,
-        "sources": docs
-    }
+    return f"""
+    <h3>回答</h3>
+    <p>{answer}</p>
+    """
